@@ -1,0 +1,74 @@
+<Page path="/" title="💕 พิม">
+
+    <Vertical>
+
+        <!-- Chat Area -->
+        <Box height="500">
+            <Html>
+<![CDATA[
+<div id="chat"
+style="
+height:100%;
+overflow:auto;
+padding:10px;
+font-family:'Segoe UI';
+">
+</div>
+
+<script>
+function addMessage(sender, text){
+
+    const chat = document.getElementById("chat");
+
+    const bubble = document.createElement("div");
+
+    bubble.style.marginBottom = "12px";
+    bubble.style.padding = "12px";
+    bubble.style.borderRadius = "16px";
+    bubble.style.maxWidth = "80%";
+
+    if(sender === "คุณ"){
+        bubble.style.background = "#2563eb";
+        bubble.style.color = "white";
+        bubble.style.marginLeft = "auto";
+    }else{
+        bubble.style.background = "#2a2a2a";
+        bubble.style.color = "white";
+    }
+
+    bubble.innerHTML =
+        "<b>" + sender + "</b><br>" + text;
+
+    chat.appendChild(bubble);
+
+    chat.scrollTop = chat.scrollHeight;
+}
+</script>
+]]>
+            </Html>
+        </Box>
+
+        <!-- Input -->
+        <Horizontal>
+
+            <Input
+                id="msg"
+                placeholder="พิมพ์ข้อความ..."
+                width="500"
+            />
+
+            <Button
+                text="ส่ง 💌"
+                click="
+                    sendMessage({
+                        message: getValue('msg')
+                    });
+                    setValue('msg', '');
+                "
+            />
+
+        </Horizontal>
+
+    </Vertical>
+
+</Page>
