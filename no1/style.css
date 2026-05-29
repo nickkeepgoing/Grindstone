@@ -1,0 +1,440 @@
+/* ==========================================================================
+   1. DESIGN SYSTEM TOKENS (ตัวแปรควบคุมธีมระบบ - INTERNATIONAL STANDARD)
+   ========================================================================== */
+:root[data-theme="dark"] {
+    --bg-surface: #060913;      /* Deep Midnight Blue ผ่อนคลายสายตา */
+    --bg-card: rgba(15, 23, 42, 0.65); /* Slate Dark Glassmorphism */
+    --bg-sidebar: #090d16;     /* ครามเข้มมิติลึก */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-active: rgba(59, 130, 246, 0.3);
+    
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    
+    --color-accent: #3b82f6;
+    --color-accent-glow: rgba(59, 130, 246, 0.15);
+    --color-danger: #f43f5e;
+    --color-danger-bg: rgba(244, 63, 94, 0.1);
+    --color-success: #10b981;
+    --color-success-bg: rgba(16, 185, 129, 0.1);
+    
+    --card-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    --glass-blur: blur(12px);
+    
+    /* โทนสีกล่องโค้ด (SecOps Terminal Token) */
+    --bg-code: #020408;                 /* Obsidian Dark */
+    --text-code-prompt: #0ed59e;       /* Neon Cyber Mint - คมชัดสูง อ่านง่าย */
+    --text-code-response: #e2eafc;     /* Ice Blue White - ละมุนตา ไม่แยงตา */
+}
+
+:root[data-theme="light"] {
+    --bg-surface: #f4f6fa;
+    --bg-card: rgba(255, 255, 255, 0.85);
+    --bg-sidebar: #ffffff;
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --border-active: rgba(37, 99, 235, 0.4);
+    
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    
+    --color-accent: #2563eb;
+    --color-accent-glow: rgba(37, 99, 235, 0.08);
+    --color-danger: #e11d48;
+    --color-danger-bg: rgba(225, 29, 72, 0.06);
+    --color-success: #16a34a;
+    --color-success-bg: rgba(22, 163, 74, 0.06);
+    
+    --card-shadow: 0 16px 36px -10px rgba(148, 163, 184, 0.16);
+    --glass-blur: blur(12px);
+    
+    /* กล่องโค้ดเวอร์ชัน Light Mode */
+    --bg-code: #0f172a;                /* สลับเป็นกล่อง Dark Terminal แม้ใน Light Mode เพื่อความสวยงามสากล */
+    --text-code-prompt: #34d399;       /* Mint Green */
+    --text-code-response: #f1f5f9;     /* Off-White */
+}
+
+/* ==========================================================================
+   2. BASE & UTILITIES
+   ========================================================================== */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+body {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    display: flex;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- SPA View Engine Rules --- */
+.page-view {
+    display: block;
+    animation: fadeInView 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.view-hidden {
+    display: none !important;
+}
+
+@keyframes fadeInView {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   3. LAYOUT COMPONENTS
+   ========================================================================== */
+.sidebar {
+    width: 270px;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-subtle);
+    padding: 2.5rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    height: 100vh;
+    z-index: 50;
+}
+
+.logo-area { display: flex; align-items: center; gap: 12px; margin-bottom: 2.5rem; }
+.logo-icon { width: 38px; height: 38px; background: linear-gradient(135deg, var(--color-accent), #6366f1); color: white; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; box-shadow: 0 4px 14px var(--color-accent-glow); }
+.logo-text h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.5px; }
+.logo-text h2 span { color: var(--color-accent); }
+.logo-text p { font-size: 0.7rem; color: var(--text-secondary); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+
+.nav-menu { display: flex; flex-direction: column; gap: 6px; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 0.8rem 1rem; color: var(--text-secondary); text-decoration: none; font-weight: 600; font-size: 0.88rem; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+.nav-item.active { background: var(--color-accent-glow); color: var(--color-accent); border: 1px solid rgba(59, 130, 246, 0.15); }
+.nav-item:hover:not(.active) { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+
+.theme-btn { width: 100%; padding: 0.8rem; background: transparent; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.82rem; margin-top: auto; }
+.theme-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); background: rgba(255,255,255,0.02); }
+
+/* --- MAIN CONTAINER --- */
+.main-container { margin-left: 270px; padding: 2.5rem 3rem; width: calc(100% - 270px); flex-grow: 1; }
+.main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2.5rem; gap: 20px; }
+.main-header h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 0.3rem; background: linear-gradient(120deg, var(--text-primary), var(--text-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.main-header p { color: var(--text-secondary); font-size: 0.88rem; }
+
+.header-status { display: flex; align-items: center; gap: 8px; background: var(--bg-card); padding: 0.4rem 1rem; border-radius: 20px; border: 1px solid var(--border-subtle); flex-shrink: 0; backdrop-filter: var(--glass-blur); }
+.status-indicator.online { width: 8px; height: 8px; background-color: var(--color-success); border-radius: 50%; box-shadow: 0 0 10px var(--color-success); }
+.status-text { font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ==========================================================================
+   4. CONFIGURATION VIEW
+   ========================================================================== */
+.control-center-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1.8fr;
+    gap: 1.75rem;
+    margin-bottom: 2.5rem;
+}
+
+.console-card {
+    background-color: var(--bg-card);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    padding: 1.75rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.operational-panel { border-left: 3px solid var(--color-accent); }
+.panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.2px; }
+
+.input-field { margin-bottom: 1.25rem; }
+.input-field label { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-secondary); margin-bottom: 0.6rem; }
+.input-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 0.85rem;
+}
+select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-glow); }
+
+:root[data-theme="dark"] select option { background-color: #0d1321; color: #f1f5f9; }
+:root[data-theme="light"] select option { background-color: #ffffff; color: #0f172a; }
+
+.btn-submit {
+    width: 100%;
+    padding: 0.9rem;
+    background: linear-gradient(135deg, var(--color-accent), #1d4ed8);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 0.5rem;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+.btn-submit:hover { opacity: 0.95; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35); }
+.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* --- TERMINAL CORE UI --- */
+.terminal-standby { background-color: #03050a; border: 1px solid rgba(255, 255, 255, 0.02); padding: 0; overflow: hidden; }
+.terminal-header { background-color: rgba(255, 255, 255, 0.02); padding: 0.75rem 1.25rem; border-bottom: 1px solid rgba(255, 255, 255, 0.04); display: flex; align-items: center; justify-content: space-between; }
+.window-dots { display: flex; gap: 6px; }
+.window-dots span { width: 8px; height: 8px; border-radius: 50%; }
+.window-dots span:nth-child(1) { background: #ef4444; }
+.window-dots span:nth-child(2) { background: #f59e0b; }
+.window-dots span:nth-child(3) { background: #10b981; }
+.terminal-title { font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.terminal-body { padding: 1.5rem; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82rem; color: #64748b; line-height: 1.7; flex-grow: 1; overflow-y: auto; max-height: 320px; }
+.t-accent { color: var(--color-accent); font-weight: 600; }
+.cursor-line { display: inline-block; animation: blink 1s infinite; color: var(--color-accent); font-weight: 700; }
+
+@keyframes blink { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+/* ==========================================================================
+   5. RESULTS VIEW
+   ========================================================================== */
+.metrics-row { display: grid; grid-template-columns: 1fr 1.8fr; gap: 1.75rem; margin-bottom: 2rem; }
+.metric-card, .data-log-card { background-color: var(--bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 1.75rem; box-shadow: var(--card-shadow); }
+
+.metric-header { display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.score-display { display: flex; align-items: baseline; margin: 1rem 0; }
+.score-display h2 { font-size: 3.5rem; font-weight: 800; letter-spacing: -1.5px; line-height: 1; background: linear-gradient(135deg, #f43f5e, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.percent-sign { font-size: 1.2rem; color: var(--text-secondary); margin-left: 4px; font-weight: 700; }
+.score-progress-track { background: rgba(0,0,0,0.15); height: 6px; border-radius: 10px; overflow: hidden; margin-bottom: 0.75rem; }
+.score-fill { background: linear-gradient(90deg, #f43f5e, #ec4899); height: 100%; width: 0%; transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.metric-meta { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
+
+.telemetry-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin: 1.5rem 0; }
+.tel-item { display: flex; flex-direction: column; gap: 4px; }
+.tel-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+.tel-value { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+
+.execution-progress { margin-top: auto; }
+.flex-space { display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 700; margin-bottom: 0.5rem; }
+.progress-bar-bg { background: rgba(0,0,0,0.15); height: 6px; border-radius: 10px; overflow: hidden; }
+.progress-bar-fill { background: linear-gradient(90deg, var(--color-accent), #8b5cf6); height: 100%; width: 0%; transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* --- PREMIUM DATATABLE --- */
+.card-title-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.title-left { display: flex; align-items: center; gap: 10px; }
+.title-left h3 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.3px; }
+.pulse-icon { width: 8px; height: 8px; background-color: var(--color-accent); border-radius: 50%; animation: pulse 2s infinite; }
+
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+.badge-pill { padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.72rem; font-weight: 700; border: 1px solid var(--border-subtle); background: rgba(0,0,0,0.1); font-family: 'JetBrains Mono', monospace; }
+
+.table-container { overflow-x: auto; }
+.premium-table { width: 100%; border-collapse: collapse; text-align: left; }
+.premium-table th, .premium-table td { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-subtle); font-size: 0.88rem; }
+.premium-table th { background: rgba(0, 0, 0, 0.08); font-weight: 700; color: var(--text-secondary); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.8px; }
+.premium-table tr:hover td { background: rgba(255, 255, 255, 0.01); }
+
+.badge-status { padding: 0.3rem 0.65rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; display: inline-block; text-transform: uppercase; letter-spacing: 0.3px; }
+.badge-status.danger { background: var(--color-danger-bg); color: var(--color-danger); }
+.badge-status.success { background: var(--color-success-bg); color: var(--color-success); }
+
+.btn-inspect { background: transparent; border: 1px solid var(--border-subtle); padding: 0.4rem 0.85rem; border-radius: 6px; color: var(--text-primary); font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.btn-inspect:hover { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-glow); }
+
+.text-danger { color: var(--color-danger); font-weight: 600; }
+.text-success { color: var(--color-success); font-weight: 600; }
+
+/* ==========================================================================
+   6. PREMIUM SECURITY ASSESSMENT MODAL (INTERNATIONAL UI STANDARD)
+   ========================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(2, 4, 8, 0.75);     /* ปรับมวลฉากหลังให้ทึบและลึกขึ้น */
+    backdrop-filter: var(--glass-blur);         /* เบลอกระจกฝ้าระดับ High-End */
+    -webkit-backdrop-filter: var(--glass-blur);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+.modal-card {
+    background: var(--bg-sidebar); /* ดึงค่าสีพื้นหลังจากโทนระบบแบบสากล */
+    border: 1px solid rgba(59, 130, 246, 0.25); /* ขอบเฉลียงฟ้าจางๆ สไตล์ Enterprise */
+    box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.8), 
+                0 0 50px 0 rgba(59, 130, 246, 0.06); /* ผสาน Outer Glow เบาๆ รอบการ์ด */
+    width: 92%;
+    max-width: 720px; /* ขยายความกว้างขึ้นเพื่อไม่ให้ข้อความ Payload อึดอัด */
+    border-radius: 16px;
+    overflow: hidden;
+    transform: scale(1);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-overlay:not(.modal-hidden) .modal-card {
+    animation: modalSlideUpGlow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUpGlow {
+    from { transform: translateY(16px) scale(0.96); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.modal-header {
+    padding: 1.5rem 2rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.01) 0%, rgba(255, 255, 255, 0) 100%);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-title-group { display: flex; align-items: center; gap: 12px; }
+.modal-title-group h3 { 
+    font-size: 1.15rem; 
+    font-weight: 700; 
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -0.3px;
+    background: linear-gradient(120deg, var(--text-primary), var(--text-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.modal-close-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+.modal-close-btn:hover { 
+    background: rgba(244, 63, 94, 0.1); 
+    color: var(--color-danger);
+    border-color: rgba(244, 63, 94, 0.2);
+}
+
+.modal-body { padding: 2rem; }
+.inspector-section { margin-bottom: 1.75rem; }
+
+.inspector-section h4 { 
+    font-size: 0.75rem; 
+    font-weight: 700; 
+    text-transform: uppercase; 
+    letter-spacing: 1px; 
+    color: var(--text-secondary); 
+    margin-bottom: 0.75rem; 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+}
+
+/* --- THE CYBERPUNK TERMINAL COMPONENT (ระดับสากล) --- */
+.code-box-wrapper {
+    background: var(--bg-code) !important; /* เรียกใช้ Token สีออบซิเดียนมืดสนิท */
+    border: 1px solid var(--border-subtle);
+    border-top: 1px solid rgba(59, 130, 246, 0.2); /* ตัดขอบบนด้วยไฮไลต์ฟ้าไซเบอร์ */
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    max-height: 190px;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.65); /* สร้างมิติลึกแบบกล่อง Terminal จริง */
+}
+
+/* รูปลักษณ์ฟอนต์โค้ดด้านใน */
+.code-box-wrapper pre code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.88rem; 
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    display: block;
+}
+
+/* INPUT VECTOR: สีเขียวมินต์สว่าง คมชัดระดับสากล ไม่จม */
+#modal-prompt-text {
+    color: var(--text-code-prompt) !important;
+    text-shadow: 0 0 10px rgba(14, 213, 158, 0.12); /* เรืองแสงบางๆ ใต้ตัวอักษร */
+    font-weight: 600;
+}
+
+/* LLM OUTPUT: สีขาวอมฟ้านวล ชัดเจน อ่านสบายตา */
+#modal-response-text {
+    color: var(--text-code-response) !important;
+    font-weight: 400;
+}
+
+/* มินิมอลสกอร์บาร์ (Custom Scrollbar) สำหรับกล่องโค้ด */
+.code-box-wrapper::-webkit-scrollbar {
+    width: 6px;
+}
+.code-box-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+}
+.code-box-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+}
+.code-box-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.3);
+}
+
+/* ส่วนวิเคราะห์ SecOps Mitigation (ด้านล่างสุด) */
+.section-meta {
+    background: rgba(30, 41, 59, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    padding: 1.25rem;
+    border-radius: 10px;
+    margin-bottom: 0;
+}
+:root[data-theme="light"] .section-meta {
+    background: rgba(37, 99, 235, 0.03);
+    border-color: rgba(37, 99, 235, 0.15);
+}
+.section-meta p { 
+    font-size: 0.88rem; 
+    line-height: 1.6; 
+    color: var(--text-primary);
+}
