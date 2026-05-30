@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "grindstone",
+      "runtimeExecutable": "C:\\Users\\dell\\Desktop\\Grindstone\\Grindstone_Project\\grindstone\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "C:\\Users\\dell\\Desktop\\Grindstone\\Grindstone_Project\\grindstone", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

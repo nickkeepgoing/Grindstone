@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GRINDSTONE · LLM Security Testing Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #070a12;
+      --sidebar: #090c14;
+      --surface: #0f1420;
+      --surface-2: #141a28;
+      --surface-3: #1a2233;
+      --border: #222b3d;
+      --border-soft: #161d2b;
+      --text: #eef2f9;
+      --text-2: #98a4ba;
+      --muted: #5a6781;
+      --brand: #6366f1;
+      --brand-2: #a855f7;
+      --accent: #22d3ee;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --mid: #fbbf24;
+      --danger: #f43f5e;
+      --ui: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+      --radius: 14px;
+      --radius-sm: 9px;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 40px -20px rgba(0,0,0,.7);
+      --glow: 0 0 0 1px rgba(99,102,241,.15), 0 0 40px -12px rgba(99,102,241,.35);
+      --ring-track: #1e2738;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: var(--ui); font-size: 14px; color: var(--text);
+      background:
+        radial-gradient(1100px 600px at 8% -10%, rgba(99,102,241,.12), transparent 55%),
+        radial-gradient(900px 600px at 105% 0%, rgba(168,85,247,.08), transparent 50%),
+        radial-gradient(700px 500px at 50% 110%, rgba(34,211,238,.05), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .4;
+      background-image: linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+      background-size: 44px 44px;
+    }
+    a { color: var(--brand); text-decoration: none; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #222a3a; border-radius: 8px; border: 2px solid var(--bg); }
+    ::-webkit-scrollbar-thumb:hover { background: #2c3650; }
+    .mono { font-family: var(--mono); }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes modalIn { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+    /* ---------- App shell ---------- */
+    .app { display: grid; grid-template-columns: 256px 1fr; min-height: 100vh; position: relative; z-index: 1; }
+
+    .sidebar {
+      background: linear-gradient(180deg, rgba(13,17,26,.6), rgba(8,11,18,.6));
+      backdrop-filter: blur(12px);
+      border-right: 1px solid var(--border-soft); padding: 22px 16px;
+      display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 4px 6px 24px; }
+    .brand .logo {
+      width: 36px; height: 36px; border-radius: 10px; flex: none;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      display: grid; place-items: center; box-shadow: 0 6px 20px -4px rgba(99,102,241,.8);
+      position: relative;
+    }
+    .brand .logo::after { content:""; position:absolute; inset:0; border-radius:10px; box-shadow: inset 0 1px 1px rgba(255,255,255,.3); }
+    .brand .logo svg { width: 19px; height: 19px; position: relative; }
+    .brand .name { font-weight: 700; letter-spacing: .5px; font-size: 15px; }
+    .brand .name small { display: block; font-weight: 500; font-size: 10px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-top: 1px; }
+
+    .nav { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+    .nav .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); padding: 14px 8px 6px; }
+    .nav a {
+      display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--radius-sm);
+      color: var(--text-2); font-weight: 500; font-size: 13px; cursor: pointer; transition: all .15s;
+    }
+    .nav a svg { width: 16px; height: 16px; opacity: .85; }
+    .nav a:hover { background: var(--surface-2); color: var(--text); }
+    .nav a.active { background: rgba(99,102,241,.14); color: #c7cbff; box-shadow: inset 0 0 0 1px rgba(99,102,241,.25); }
+    .nav a.active svg { opacity: 1; }
+
+    .side-foot { margin-top: auto; padding: 14px 10px 4px; border-top: 1px solid var(--border-soft); }
+    .side-foot .stat-line { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); padding: 4px 0; }
+    .side-foot .stat-line b { color: var(--text-2); font-weight: 600; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+    /* ---------- Topbar ---------- */
+    .main { display: flex; flex-direction: column; min-width: 0; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 18px 28px; border-bottom: 1px solid var(--border-soft);
+      position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
+      background: rgba(10,13,21,.7);
+    }
+    .topbar h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .topbar .crumb { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .topbar .right { display: flex; align-items: center; gap: 12px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
+      padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border); background: rgba(20,26,40,.6);
+      color: var(--text-2); backdrop-filter: blur(8px);
+    }
+    .pill.scanning { border-color: rgba(245,158,11,.4); color: #fcd34d; }
+    .pill.scanning .dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    .content { padding: 26px 28px 60px; max-width: 1400px; width: 100%; }
+    .view[hidden] { display: none; }
+
+    /* ---------- KPI tiles ---------- */
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+    .kpi {
+      background: linear-gradient(180deg, var(--surface), rgba(15,20,32,.7));
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+      position: relative; overflow: hidden; animation: fadeUp .5s ease both;
+      transition: transform .18s, border-color .18s, box-shadow .18s;
+    }
+    .kpi:nth-child(2){ animation-delay:.06s } .kpi:nth-child(3){ animation-delay:.12s } .kpi:nth-child(4){ animation-delay:.18s }
+    .kpi:hover { transform: translateY(-2px); border-color: #2c3650; box-shadow: var(--shadow), var(--glow); }
+    .kpi::before { content:""; position:absolute; inset:0 0 auto 0; height:2px; background: linear-gradient(90deg, var(--brand), var(--accent), transparent); opacity:.7; }
+    .kpi::after { content:""; position:absolute; right:-30px; top:-30px; width:110px; height:110px; border-radius:50%; background: radial-gradient(circle, rgba(99,102,241,.12), transparent 70%); pointer-events:none; }
+    .kpi .k-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); font-weight: 600; }
+    .kpi .k-val { font-size: 31px; font-weight: 700; margin-top: 10px; line-height: 1; letter-spacing: -.5px; background: linear-gradient(180deg, #fff, #c7cbff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .kpi .k-sub { font-size: 12px; color: var(--text-2); margin-top: 9px; }
+    .kpi.risk { display: flex; align-items: center; gap: 16px; }
+    .ring { width: 84px; height: 84px; border-radius: 50%; flex: none; display: grid; place-items: center;
+            background: conic-gradient(var(--ring-track) 0deg, var(--ring-track) 360deg); transition: background .6s; }
+    .ring .hole { width: 66px; height: 66px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; text-align: center; }
+    .ring .hole .num { font-size: 22px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+    .ring .hole .cap { font-size: 9px; color: var(--muted); letter-spacing: 1px; }
+
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .5px; border: 1px solid; }
+    .b-CRITICAL { color: #fda4af; background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.4); }
+    .b-HIGH { color: #fcd34d; background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.4); }
+    .b-MEDIUM { color: #fde68a; background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.35); }
+    .b-LOW { color: #6ee7b7; background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.4); }
+    .b-IDLE { color: var(--muted); background: var(--surface-2); border-color: var(--border); }
+
+    /* ---------- Cards / layout ---------- */
+    .cols { display: grid; grid-template-columns: 380px 1fr; gap: 18px; align-items: start; }
+    .card { background: linear-gradient(180deg, var(--surface), rgba(13,18,28,.85)); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); animation: fadeUp .5s ease both; }
+    .card > .head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border-soft); }
+    .card > .head h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .3px; display: flex; align-items: center; gap: 8px; }
+    .card > .head h3 svg { color: var(--accent); }
+    .card > .head .meta { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .card > .body { padding: 18px; }
+    .sticky { position: sticky; top: 86px; }
+    .stack > * + * { margin-top: 18px; }
+
+    /* ---------- Form ---------- */
+    .field { margin-bottom: 16px; }
+    .field > label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text-2); margin-bottom: 7px; }
+    .field .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px; }
+    input[type=text], input[type=number], select {
+      width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 12px; font-family: var(--ui); font-size: 13px; transition: border .15s, box-shadow .15s;
+    }
+    input::placeholder { color: var(--muted); }
+    input:focus, select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%235f6b82' stroke-width='2'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 30px; }
+
+    .seg { display: flex; gap: 8px; }
+    .toggle { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-2); transition: all .15s; user-select: none; }
+    .toggle input { display: none; }
+    .toggle.on { border-color: rgba(99,102,241,.55); background: rgba(99,102,241,.14); color: #c7cbff; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 11px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; user-select: none; transition: all .15s; font-weight: 500; }
+    .chip:hover { border-color: var(--muted); transform: translateY(-1px); }
+    .chip.on { border-color: rgba(99,102,241,.55); background: rgba(99,102,241,.16); color: #c7cbff; box-shadow: 0 0 0 1px rgba(99,102,241,.2); }
+    .chip .c-n { color: var(--muted); margin-left: 4px; font-family: var(--mono); }
+
+    .btn {
+      width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 4px;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; border: none;
+      padding: 13px; border-radius: var(--radius-sm); font-family: var(--ui); font-weight: 600; font-size: 14px;
+      cursor: pointer; transition: filter .15s, transform .05s, box-shadow .2s; box-shadow: 0 8px 24px -8px rgba(99,102,241,.7);
+      position: relative; overflow: hidden;
+    }
+    .btn::after { content:""; position:absolute; inset:0; background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.25) 50%, transparent 70%); transform: translateX(-120%); transition: transform .6s; }
+    .btn:hover { filter: brightness(1.1); box-shadow: 0 10px 30px -8px rgba(99,102,241,.85); }
+    .btn:hover::after { transform: translateX(120%); }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { background: var(--surface-3); color: var(--muted); box-shadow: none; cursor: not-allowed; }
+    .btn:disabled::after { display: none; }
+    .btn svg { width: 16px; height: 16px; position: relative; }
+
+    .prog { height: 6px; background: var(--surface-3); border-radius: 999px; margin-top: 14px; overflow: hidden; }
+    .prog > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--brand), var(--brand-2)); border-radius: 999px; transition: width .3s; }
+    .note { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+    .err { font-size: 12px; color: #fda4af; margin-top: 10px; min-height: 1px; }
+
+    /* ---------- Tables ---------- */
+    .tbl-wrap { max-height: 460px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    thead th { text-align: left; padding: 11px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); position: sticky; top: 0; background: linear-gradient(180deg, var(--surface-2), var(--surface)); border-bottom: 1px solid var(--border); z-index: 1; backdrop-filter: blur(4px); }
+    tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+    tbody tr { transition: background .12s; }
+    tbody tr:hover { background: var(--surface-2); }
+    .clickable tbody tr { cursor: pointer; }
+    .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border-radius: 5px; background: var(--surface-3); color: var(--text-2); border: 1px solid var(--border); }
+    .muted-cell { color: var(--muted); }
+    .id-cell { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
+    .score { font-family: var(--mono); font-weight: 600; }
+    .s-ok { color: var(--ok); } .s-mid { color: var(--warn); } .s-bad { color: var(--danger); }
+    .sev-dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle; }
+
+    .empty { text-align: center; padding: 44px 20px; color: var(--muted); }
+    .empty svg { width: 34px; height: 34px; opacity: .4; margin-bottom: 12px; }
+    .empty .t { font-size: 13px; color: var(--text-2); }
+    .empty .s { font-size: 12px; margin-top: 4px; }
+
+    /* ---------- Detail modal ---------- */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(3px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .modal-bg[hidden] { display: none; }
+    .modal { background: linear-gradient(180deg, var(--surface), rgba(13,18,28,.95)); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 30px 90px -16px rgba(0,0,0,.8), var(--glow); width: 100%; max-width: 800px; max-height: 88vh; display: flex; flex-direction: column; animation: modalIn .25s cubic-bezier(.2,.8,.2,1) both; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-soft); flex: none; }
+    .modal-head h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; font-size: 18px; line-height: 1; }
+    .modal-close:hover { color: var(--text); background: var(--surface-2); }
+    .modal-body { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .detail-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+    .detail-kv { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 10px 14px; }
+    .detail-kv .dk { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); margin-bottom: 5px; }
+    .detail-kv .dv { font-family: var(--mono); font-size: 12px; color: var(--text-2); word-break: break-all; }
+    .detail-block { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 12px 14px; }
+    .detail-block .db-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); margin-bottom: 8px; }
+    .detail-block pre { margin: 0; font-family: var(--mono); font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; line-height: 1.6; max-height: 220px; overflow-y: auto; }
+    .detail-block pre.err-text { color: #fda4af; }
+    .feed-row-click { cursor: pointer; }
+    .feed-row-click:hover { background: var(--surface-3) !important; }
+
+    /* ---------- Critical banner + remediation ---------- */
+    .crit-banner { background: linear-gradient(135deg, rgba(244,63,94,.14), rgba(244,63,94,.05)); border: 1px solid rgba(244,63,94,.45); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px; box-shadow: 0 0 30px -10px rgba(244,63,94,.4); }
+    .crit-banner .ct { display: flex; align-items: center; gap: 9px; font-weight: 700; color: #fda4af; font-size: 13px; letter-spacing: .3px; margin-bottom: 8px; }
+    .crit-banner ul { margin: 0; padding-left: 22px; }
+    .crit-banner li { color: #fecdd3; font-size: 12.5px; line-height: 1.7; }
+    .rem-item { background: var(--surface-2); border: 1px solid var(--border-soft); border-left: 3px solid var(--brand); border-radius: var(--radius-sm); padding: 15px 17px; margin-bottom: 14px; }
+    .rem-item:last-child { margin-bottom: 0; }
+    .rem-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .rem-head .rl { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; }
+    .rem-head .rl .rcode { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 5px; background: rgba(99,102,241,.16); color: #c7cbff; border: 1px solid rgba(99,102,241,.3); }
+    .rem-risk { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+    .rem-sec { margin-bottom: 11px; }
+    .rem-sec:last-child { margin-bottom: 0; }
+    .rem-sec .sl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 5px; display: flex; align-items: center; gap: 6px; }
+    .rem-sec .stxt { font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
+    .rem-fixes { margin: 0; padding-left: 0; list-style: none; }
+    .rem-fixes li { font-size: 12.5px; color: var(--text-2); line-height: 1.6; padding: 5px 0 5px 24px; position: relative; }
+    .rem-fixes li::before { content: ""; position: absolute; left: 4px; top: 11px; width: 7px; height: 7px; border-radius: 2px; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .rem-viol { background: rgba(244,63,94,.08); border: 1px solid rgba(244,63,94,.25); border-radius: 7px; padding: 9px 12px; margin-top: 7px; }
+    .rem-viol .vh { font-family: var(--mono); font-size: 11px; color: #fda4af; font-weight: 600; margin-bottom: 4px; }
+    .rem-viol .va { font-size: 12px; color: var(--text-2); line-height: 1.55; }
+    .rem-empty { text-align: center; padding: 30px 20px; color: var(--muted); }
+    .rem-empty .rt { font-size: 13px; color: var(--ok); font-weight: 600; }
+
+    /* ---------- Charts / dashboard ---------- */
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .chart-box { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: 14px; min-width: 0; overflow: hidden; }
+    .chart-box h4 { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .chart-box canvas { max-width: 100% !important; display: block; }
+    canvas { max-height: 240px; }
+    .export { display: flex; gap: 10px; }
+    .export a { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text-2); border: 1px solid var(--border); padding: 7px 12px; border-radius: var(--radius-sm); background: var(--surface-2); }
+    .export a:hover { border-color: var(--brand); color: var(--text); }
+
+    /* ---------- Datasets view bars ---------- */
+    .ds-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+    .bar-row { margin-bottom: 11px; }
+    .bar-row .bl { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+    .bar-row .bl .v { font-family: var(--mono); color: var(--text-2); }
+    .bar-track { height: 8px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); }
+
+    @media (max-width: 1080px) { .cols { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2,1fr); } .chart-grid, .ds-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .app { grid-template-columns: 1fr; } .sidebar { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <div class="name">GRINDSTONE<small>Security Platform</small></div>
+      </div>
+
+      <nav class="nav">
+        <span class="lbl">Workspace</span>
+        <a class="active" data-view="console"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3h18v14H3z"/><path d="M8 21h8M12 17v4"/></svg> Security Console</a>
+        <a data-view="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-9 9z"/><path d="M12 7v5l3 2"/></svg> Scan History</a>
+        <a data-view="datasets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg> Attack Datasets</a>
+        <span class="lbl">Frameworks</span>
+        <a style="cursor:default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/></svg> OWASP LLM Top 10</a>
+        <a style="cursor:default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 7l10 5 10-5"/></svg> MITRE ATLAS</a>
+      </nav>
+
+      <div class="side-foot">
+        <div class="stat-line"><span>Prompt pool</span><b id="sfPool">—</b></div>
+        <div class="stat-line"><span>Detection</span><b id="sfLayers">L1·L3</b></div>
+        <div class="stat-line"><span>Status</span><b><span class="dot"></span> Online</b></div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Security Console</h1>
+          <div class="crumb" id="pageCrumb">Adversarial LLM testing · OWASP · MITRE · Thai-cultural</div>
+        </div>
+        <div class="right">
+          <span class="pill" id="poolPill">⛁ <span id="poolCount">loading…</span></span>
+          <span class="pill" id="statusPill"><span class="dot"></span> Ready</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- ====== CONSOLE VIEW ====== -->
+        <section class="view" id="view-console">
+          <div class="kpis">
+            <div class="kpi risk">
+              <div class="ring" id="riskRing"><div class="hole"><div class="num" id="kpiRiskNum">—</div><div class="cap">/ 10</div></div></div>
+              <div>
+                <div class="k-label">Overall Risk</div>
+                <div id="kpiLevelWrap" style="margin-top:10px"><span class="badge b-IDLE" id="kpiLevel">IDLE</span></div>
+                <div class="k-sub" id="kpiTarget">no scan yet</div>
+              </div>
+            </div>
+            <div class="kpi">
+              <div class="k-label">Attacks Run</div>
+              <div class="k-val mono" id="kpiAttacks">—</div>
+              <div class="k-sub" id="kpiAttacksSub">awaiting scan</div>
+            </div>
+            <div class="kpi">
+              <div class="k-label">Attack Success Rate</div>
+              <div class="k-val mono" id="kpiAsr">—</div>
+              <div class="k-sub">share of attacks that breached</div>
+            </div>
+            <div class="kpi">
+              <div class="k-label">Top Exposure</div>
+              <div class="k-val" id="kpiTopCat" style="font-size:20px;font-weight:600">—</div>
+              <div class="k-sub" id="kpiTopCatSub">highest-risk category</div>
+            </div>
+          </div>
+
+          <!-- Target Honeypot — system prompt + canary credentials -->
+          <div class="card" style="margin-bottom:22px">
+            <div class="head" style="cursor:pointer" id="honeypotHead">
+              <h3>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+                Target Honeypot
+                <span class="tag" style="margin-left:6px;background:rgba(244,63,94,.12);border-color:rgba(244,63,94,.4);color:#fda4af">canary credentials</span>
+              </h3>
+              <span class="meta">
+                <span id="honeypotSecretCount">—</span> &nbsp;·&nbsp;
+                <span id="honeypotToggle" style="color:var(--brand);cursor:pointer">show ▾</span>
+              </span>
+            </div>
+            <div class="body" id="honeypotBody" hidden>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+                The target LLM receives this system prompt before every attack.
+                If any canary string below appears verbatim in a target response, the judge auto-confirms <b style="color:#fda4af">credential_leak</b> — easy for a human to verify by eye.
+              </div>
+              <div class="detail-block" style="margin-bottom:12px">
+                <div class="db-label">System Prompt (sent to target)</div>
+                <pre id="honeypotPrompt" style="max-height:180px"></pre>
+              </div>
+              <div class="detail-block">
+                <div class="db-label">Canary Secrets (should never leak)</div>
+                <div id="honeypotSecrets" style="display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:12px"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cols">
+            <!-- config -->
+            <div class="card sticky">
+              <div class="head"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 00-1.7-1L14.5 2h-5l-.3 2.6a7 7 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 000 2l-2 1.6 2 3.4 2.4-1a7 7 0 001.7 1l.3 2.8h5l.3-2.8a7 7 0 001.7-1l2.4 1 2-3.4-2-1.6a7 7 0 00.1-1z"/></svg> Scan Configuration</h3></div>
+              <div class="body">
+                <div class="field">
+                  <label>Target Model</label>
+                  <input type="text" id="cfgTarget" placeholder="openrouter/openai/gpt-4o-mini" />
+                  <div style="font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5">
+                    OpenRouter: <span style="color:var(--text-2);font-family:var(--mono)">openrouter/nvidia/…</span> &nbsp;·&nbsp;
+                    Anthropic: <span style="color:var(--text-2);font-family:var(--mono)">anthropic/claude-…</span> &nbsp;·&nbsp;
+                    <span style="color:var(--ok)">nvidia/…:free auto-prefixed</span>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Test Mode</label>
+                  <div class="seg">
+                    <label class="toggle on" id="tgSingle"><input type="checkbox" id="cfgSingle" checked /> Single-turn</label>
+                    <label class="toggle on" id="tgMulti"><input type="checkbox" id="cfgMulti" checked /> Multi-turn</label>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Scan Depth</label>
+                  <select id="cfgSize">
+                    <option value="quick">Quick · 8 single / 2 multi</option>
+                    <option value="standard" selected>Standard · 16 single / 4 multi</option>
+                    <option value="deep">Deep · 40 single / 8 multi</option>
+                    <option value="full">Full · entire pool (slow)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>OWASP Categories <span class="hint">· none = all</span></label>
+                  <div class="chips" id="cfgCats"></div>
+                </div>
+                <div class="field">
+                  <label>Dataset Sources <span class="hint">· none = all</span></label>
+                  <div class="chips" id="cfgSrcs"></div>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label>Seed <span class="hint">· optional, reproducible</span></label>
+                  <input type="number" id="cfgSeed" placeholder="e.g. 42" />
+                </div>
+                <button class="btn" id="btnScan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 3l14 9-14 9z"/></svg> Launch Scan</button>
+                <div class="prog" id="progWrap" hidden><div id="progBar"></div></div>
+                <div class="note" id="poolHint">loading prompt pool…</div>
+                <div class="err" id="errBox"></div>
+              </div>
+            </div>
+
+            <!-- results -->
+            <div class="stack" style="min-width:0">
+              <div class="card">
+                <div class="head"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Live Attack Feed</h3><span class="meta" id="feedCount"></span></div>
+                <div class="tbl-wrap">
+                  <table>
+                    <thead><tr><th>#</th><th>Attack ID</th><th>OWASP</th><th>Vector</th><th>Turn</th><th>Score</th><th>Violation</th><th>Evidence</th></tr></thead>
+                    <tbody id="feedBody">
+                      <tr><td colspan="8"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3l14 9-14 9z"/></svg><div class="t">No active scan</div><div class="s">Configure a target and launch a scan to stream live results.</div></div></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="card" id="analysisCard" hidden>
+                <div class="head"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg> Risk Analysis</h3><div class="export" id="exportWrap"></div></div>
+                <div class="body">
+                  <div id="criticalBanner" hidden></div>
+                  <div class="chart-grid">
+                    <div class="chart-box"><h4>Risk by OWASP Category</h4><canvas id="chartCat"></canvas></div>
+                    <div class="chart-box"><h4>Risk by Thai Cultural Vector</h4><canvas id="chartDim"></canvas></div>
+                  </div>
+                </div>
+                <div class="head" style="border-top:1px solid var(--border-soft)"><h3>Breaches &amp; Evidence</h3></div>
+                <div class="tbl-wrap">
+                  <table>
+                    <thead><tr><th>Attack ID</th><th>OWASP</th><th>Score</th><th>Violation</th><th>Evidence</th></tr></thead>
+                    <tbody id="violBody"></tbody>
+                  </table>
+                </div>
+                <div class="head" style="border-top:1px solid var(--border-soft)"><h3><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> Vulnerability Analysis &amp; Remediation</h3></div>
+                <div class="body" id="remediationWrap"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ====== HISTORY VIEW ====== -->
+        <section class="view" id="view-history" hidden>
+          <div class="card">
+            <div class="head"><h3>Scan History</h3><span class="meta" id="histCount"></span></div>
+            <div class="tbl-wrap">
+              <table class="clickable">
+                <thead><tr><th>Run ID</th><th>Target</th><th>Started</th><th>Scan Settings</th><th>Risk</th><th>Level</th></tr></thead>
+                <tbody id="histBody"><tr><td colspan="6"><div class="empty"><div class="t">No scans yet</div></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ====== DATASETS VIEW ====== -->
+        <section class="view" id="view-datasets" hidden>
+          <div class="kpis" style="grid-template-columns:repeat(2,1fr)">
+            <div class="kpi"><div class="k-label">Single-turn Prompts</div><div class="k-val mono" id="dsSingleTotal">—</div><div class="k-sub">OWASP · MITRE · Thai-cultural · curated</div></div>
+            <div class="kpi"><div class="k-label">Multi-turn Scenarios</div><div class="k-val mono" id="dsMultiTotal">—</div><div class="k-sub">scripted crescendo + adaptive</div></div>
+          </div>
+          <div class="card">
+            <div class="head"><h3>Prompt Pool Composition</h3><span class="meta">imported from Go backend + curated seeds</span></div>
+            <div class="body">
+              <div class="ds-grid">
+                <div><h4 style="font-size:12px;color:var(--text-2);margin:0 0 14px">By OWASP Category</h4><div id="dsCatWrap"></div></div>
+                <div><h4 style="font-size:12px;color:var(--text-2);margin:0 0 14px">By Cultural Vector</h4><div id="dsDimWrap"></div></div>
+                <div><h4 style="font-size:12px;color:var(--text-2);margin:0 0 14px">By Source</h4><div id="dsSrcWrap"></div></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DETAIL MODAL ============ -->
+  <div class="modal-bg" id="detailModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          Attack Detail
+          <span class="tag" id="mdAttackId" style="margin-left:4px"></span>
+        </h3>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <div class="detail-kv"><div class="dk">OWASP</div><div class="dv" id="mdOwasp"></div></div>
+          <div class="detail-kv"><div class="dk">Vector</div><div class="dv" id="mdVector"></div></div>
+          <div class="detail-kv"><div class="dk">Score</div><div class="dv" id="mdScore"></div></div>
+          <div class="detail-kv"><div class="dk">Violation</div><div class="dv" id="mdViolation"></div></div>
+        </div>
+        <div class="detail-block" id="mdSystemBlock">
+          <div class="db-label" style="display:flex;align-items:center;gap:7px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+            System Prompt <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">· sent to target before attack</span>
+          </div>
+          <pre id="mdSystem" style="max-height:180px"></pre>
+        </div>
+        <div class="detail-block">
+          <div class="db-label">Attack Prompt</div>
+          <pre id="mdPrompt"></pre>
+        </div>
+        <div class="detail-block">
+          <div class="db-label">Target Response</div>
+          <pre id="mdResponse"></pre>
+        </div>
+        <div class="detail-block" id="mdReasonBlock">
+          <div class="db-label">Judge Reasoning</div>
+          <pre id="mdReason"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const SIZE_MAP = {
+  quick:    { max_single: 8,  max_multi: 2 },
+  standard: { max_single: 16, max_multi: 4 },
+  deep:     { max_single: 40, max_multi: 8 },
+  full:     { max_single: null, max_multi: null },
+};
+const OWASP_NAMES = {
+  LLM01:"Prompt Injection", LLM02:"Sensitive Info Disclosure", LLM03:"Supply Chain",
+  LLM04:"Data & Model Poisoning", LLM05:"Improper Output Handling", LLM06:"Excessive Agency",
+  LLM07:"System Prompt Leakage", LLM08:"Vector/Embedding Weakness", LLM09:"Misinformation", LLM10:"Unbounded Consumption",
+};
+let selectedCats = new Set();
+let selectedSrcs = new Set();
+let feedRows = 0, violations = [], es = null;
+let catChart = null, dimChart = null;
+let knownSecrets = [];
+let targetSystemPrompt = '';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s ?? '').toString().replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const sevClass = (s) => s >= 1 ? 's-bad' : (s >= 0.5 ? 's-mid' : 's-ok');
+const sevColor = (s) => s >= 1 ? 'var(--danger)' : (s >= 0.5 ? 'var(--warn)' : 'var(--ok)');
+const levelColor = (v) => v >= 7.5 ? '#f43f5e' : v >= 5 ? '#f59e0b' : v >= 2.5 ? '#fbbf24' : '#10b981';
+const shortModel = (m) => (m || '').split('/').pop();
+
+/* ---------- view switching ---------- */
+const TITLES = { console:["Security Console","Adversarial LLM testing · OWASP · MITRE · Thai-cultural"],
+                 history:["Scan History","Past assessments and their risk posture"],
+                 datasets:["Attack Datasets","Adversarial prompt corpus loaded into the platform"] };
+function switchView(name) {
+  document.querySelectorAll('.nav a[data-view]').forEach(a => a.classList.toggle('active', a.dataset.view === name));
+  document.querySelectorAll('.view').forEach(v => v.hidden = (v.id !== 'view-' + name));
+  $('pageTitle').textContent = TITLES[name][0];
+  $('pageCrumb').textContent = TITLES[name][1];
+  if (name === 'history') loadRuns();
+}
+document.querySelectorAll('.nav a[data-view]').forEach(a => a.onclick = () => switchView(a.dataset.view));
+
+/* toggles */
+function bindToggle(tgId, cbId) {
+  $(tgId).onclick = (e) => { e.preventDefault(); const cb = $(cbId); cb.checked = !cb.checked; $(tgId).classList.toggle('on', cb.checked); };
+}
+bindToggle('tgSingle','cfgSingle'); bindToggle('tgMulti','cfgMulti');
+
+/* ---------- pool stats ---------- */
+async function loadPool() {
+  try {
+    const stats = await (await fetch('/api/prompt-stats')).json();
+    const s = stats.single_turn, m = stats.multi_turn;
+    const total = s.total + m.total;
+    $('poolCount').textContent = total.toLocaleString() + ' prompts';
+    $('sfPool').textContent = total.toLocaleString();
+    $('poolHint').innerHTML = `Pool: <b style="color:var(--text-2)">${s.total}</b> single-turn + <b style="color:var(--text-2)">${m.total}</b> multi-turn loaded.`;
+    $('dsSingleTotal').textContent = s.total.toLocaleString();
+    $('dsMultiTotal').textContent = m.total.toLocaleString();
+
+    const merge = (a,b)=>{const o={...a};for(const[k,v]of Object.entries(b||{}))o[k]=(o[k]||0)+v;return o;};
+    const cats = merge(s.by_category, m.by_category);
+    const srcs = merge(s.by_source, m.by_source);
+    const dims = merge(s.by_dimension, m.by_dimension);
+
+    // config chips
+    const catBox = $('cfgCats'); catBox.innerHTML = '';
+    Object.keys(cats).sort().forEach(c => {
+      const el = document.createElement('span'); el.className='chip';
+      el.innerHTML = `${c}<span class="c-n">${cats[c]}</span>`;
+      el.title = OWASP_NAMES[c] || c;
+      el.onclick = () => { el.classList.toggle('on'); el.classList.contains('on')?selectedCats.add(c):selectedCats.delete(c); };
+      catBox.appendChild(el);
+    });
+    const srcBox = $('cfgSrcs'); srcBox.innerHTML = '';
+    Object.keys(srcs).sort().forEach(c => {
+      const el = document.createElement('span'); el.className='chip';
+      el.innerHTML = `${c}<span class="c-n">${srcs[c]}</span>`;
+      el.onclick = () => { el.classList.toggle('on'); el.classList.contains('on')?selectedSrcs.add(c):selectedSrcs.delete(c); };
+      srcBox.appendChild(el);
+    });
+
+    // datasets view bars
+    renderBars('dsCatWrap', cats, (k)=>`${k} · ${OWASP_NAMES[k]||''}`);
+    renderBars('dsDimWrap', dims, (k)=>k.replace(/_/g,' '));
+    renderBars('dsSrcWrap', srcs, (k)=>k);
+  } catch (e) {
+    $('poolCount').textContent = 'pool offline';
+    $('poolHint').textContent = 'Could not load pool stats — is the server running?';
+  }
+}
+
+function renderBars(wrapId, obj, labelFn) {
+  const wrap = $(wrapId); wrap.innerHTML = '';
+  const max = Math.max(1, ...Object.values(obj));
+  Object.entries(obj).sort((a,b)=>b[1]-a[1]).forEach(([k,v]) => {
+    const row = document.createElement('div'); row.className = 'bar-row';
+    row.innerHTML = `<div class="bl"><span>${esc(labelFn(k))}</span><span class="v">${v}</span></div>
+                     <div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%"></div></div>`;
+    wrap.appendChild(row);
+  });
+}
+
+/* ---------- history ---------- */
+/* render the saved scan settings of a run as compact pills */
+const _CFG_BASE = 'display:inline-block;font-size:10px;padding:2px 7px;border-radius:5px;white-space:nowrap;border:1px solid;line-height:1.5;';
+const _CFG_PRI  = _CFG_BASE + 'background:rgba(99,102,241,.14);color:#c7cbff;border-color:rgba(99,102,241,.3);';
+const _CFG_ALT  = _CFG_BASE + 'background:#1b2333;color:#9aa6bb;border-color:#232c3e;';
+function fmtConfig(cfg) {
+  if (!cfg) return '<span class="muted-cell">—</span>';
+  const t = [];
+  const modes = cfg.modes || [];
+  if (modes.includes('single_turn')) t.push(`<span style="${_CFG_PRI}">single-turn</span>`);
+  if (modes.includes('multi_turn'))  t.push(`<span style="${_CFG_PRI}">multi-turn</span>`);
+  let depth;
+  if (cfg.max_single == null && cfg.max_multi == null) depth = 'full pool';
+  else depth = `${cfg.max_single ?? '∞'}S · ${cfg.max_multi ?? '∞'}M`;
+  t.push(`<span style="${_CFG_ALT}">${esc(depth)}</span>`);
+  if (cfg.total_prompts != null) t.push(`<span style="${_CFG_ALT}">${cfg.total_prompts} prompts</span>`);
+  if (cfg.owasp_categories && cfg.owasp_categories.length) t.push(`<span style="${_CFG_PRI}">${esc(cfg.owasp_categories.join(', '))}</span>`);
+  if (cfg.sources && cfg.sources.length) t.push(`<span style="${_CFG_PRI}">src: ${esc(cfg.sources.join(', '))}</span>`);
+  if (cfg.seed != null) t.push(`<span style="${_CFG_ALT}">seed ${esc(cfg.seed)}</span>`);
+  return `<div style="display:flex;flex-wrap:wrap;gap:4px;max-width:340px">${t.join('')}</div>`;
+}
+
+async function loadRuns() {
+  try {
+    const runs = await (await fetch('/api/runs')).json();
+    const tb = $('histBody'); $('histCount').textContent = runs.length ? runs.length + ' runs' : '';
+    if (!runs.length) { tb.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="t">No scans yet</div><div class="s">Run a scan from the console to populate history.</div></div></td></tr>'; return; }
+    tb.innerHTML = '';
+    runs.forEach(run => {
+      const lvl = run.risk_level || 'IDLE';
+      const tr = document.createElement('tr');
+      const when = run.started_at ? new Date(run.started_at + 'Z').toLocaleString() : '—';
+      tr.innerHTML = `<td class="id-cell">${esc(run.run_id)}</td>
+        <td>${esc(shortModel(run.target_model))}</td>
+        <td class="muted-cell">${esc(when)}</td>
+        <td>${fmtConfig(run.config)}</td>
+        <td class="score" style="color:${levelColor(run.overall_risk_score||0)}">${run.overall_risk_score ?? '—'}</td>
+        <td><span class="badge b-${lvl}">${lvl}</span></td>`;
+      tr.onclick = () => loadReport(run.run_id);
+      tb.appendChild(tr);
+    });
+  } catch (e) {}
+}
+
+async function loadReport(runId) {
+  try {
+    const data = await (await fetch('/api/report/' + runId)).json();
+    if (data.error || !data.run) return;
+    switchView('console');
+    // repopulate the live attack feed from saved history (clickable → detail modal)
+    feedRows = 0; violations = [];
+    $('feedBody').innerHTML = '';
+    (data.attacks || []).forEach(a => addFeedRow(a));
+    if (!data.attacks || !data.attacks.length) {
+      $('feedBody').innerHTML = '<tr><td colspan="8"><div class="empty"><div class="t">No saved attacks for this run</div></div></td></tr>';
+    }
+    const report = data.run.report_json ? JSON.parse(data.run.report_json) : null;
+    if (report) renderDashboard(report, runId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {}
+}
+
+/* ---------- live feed ---------- */
+function addFeedRow(d) {
+  if (feedRows === 0) $('feedBody').innerHTML = '';
+  feedRows++; $('feedCount').textContent = feedRows + ' results';
+  const sc = (d.success_score ?? 0).toFixed(1);
+  const isErr = d.violation_type === 'judge_error' || d.violation_type === 'target_error' || d.error;
+  const violHint = isErr ? ' <span style="color:var(--muted);font-size:10px" title="not counted in risk score">ⓘ</span>' : '';
+  const scoreCell = isErr
+    ? `<td class="muted-cell mono" title="inconclusive — not scored">n/a</td>`
+    : `<td class="score ${sevClass(d.success_score)}"><span class="sev-dot" style="background:${sevColor(d.success_score)}"></span>${sc}</td>`;
+  const tr = document.createElement('tr');
+  tr.className = 'feed-row-click';
+  tr.innerHTML =
+    `<td class="muted-cell mono">${feedRows}</td>
+     <td class="id-cell">${esc(d.attack_id)}</td>
+     <td><span class="tag">${esc(d.owasp_category)}</span></td>
+     <td class="muted-cell">${esc(d.thai_dimension)}</td>
+     <td class="muted-cell mono">${esc(d.turn_number ?? 1)}</td>
+     ${scoreCell}
+     <td class="muted-cell">${esc(d.violation_type)}${violHint}</td>
+     <td class="muted-cell">${esc((d.evidence||'').slice(0,52))}</td>`;
+  tr.onclick = () => openDetail(d);
+  const tb = $('feedBody'); tb.insertBefore(tr, tb.firstChild);
+  if ((d.success_score ?? 0) > 0) violations.push(d);
+}
+
+function openDetail(d) {
+  $('mdAttackId').textContent = d.attack_id || '';
+  $('mdOwasp').textContent = d.owasp_category || '—';
+  $('mdVector').textContent = d.thai_dimension || '—';
+  const sc = (d.success_score ?? 0).toFixed(1);
+  const scoreEl = $('mdScore');
+  scoreEl.textContent = sc;
+  scoreEl.className = 'dv ' + sevClass(d.success_score);
+  $('mdViolation').textContent = d.violation_type || '—';
+
+  $('mdSystem').textContent = targetSystemPrompt || '(none)';
+
+  const promptEl = $('mdPrompt');
+  promptEl.textContent = d.attack_prompt || '(not available)';
+  promptEl.className = '';
+
+  const respEl = $('mdResponse');
+  const resp = d.target_response || '(not available)';
+  if (resp.startsWith('[ERROR:')) {
+    respEl.textContent = resp;
+    respEl.className = 'err-text';
+  } else {
+    respEl.innerHTML = highlightLeaks(resp);
+    respEl.className = '';
+  }
+
+  const reason = d.reasoning || '';
+  const reasonBlock = $('mdReasonBlock');
+  if (reason) {
+    $('mdReason').textContent = reason;
+    $('mdReason').className = d.violation_type === 'judge_error' ? 'err-text' : '';
+    reasonBlock.hidden = false;
+  } else {
+    reasonBlock.hidden = true;
+  }
+
+  $('detailModal').hidden = false;
+}
+
+function closeDetail() { $('detailModal').hidden = true; }
+$('modalClose').onclick = closeDetail;
+$('detailModal').onclick = (e) => { if (e.target === $('detailModal')) closeDetail(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+
+/* ---------- dashboard ---------- */
+function setRing(score) {
+  const pct = Math.max(0, Math.min(1, (score||0)/10));
+  const col = levelColor(score||0);
+  $('riskRing').style.background = `conic-gradient(${col} ${pct*360}deg, var(--ring-track) 0deg)`;
+  const num = $('kpiRiskNum'); num.textContent = (score ?? '—'); num.style.color = col;
+}
+
+function renderDashboard(report, runId) {
+  $('analysisCard').hidden = false;
+  // "inconclusive" = nothing actually ran: 0 scored attacks but ≥1 errored out
+  // (target API failure / rate limit). Must NOT render as a safe "LOW / no vulns".
+  const errs = report.total_errors || 0;
+  const inconclusive = (report.total_attacks_run || 0) === 0 && errs > 0;
+  setRing(inconclusive ? null : report.overall_risk_score);
+  const lvl = report.risk_level || 'IDLE';
+  if (inconclusive) {
+    $('kpiLevel').textContent = 'INCONCLUSIVE'; $('kpiLevel').className = 'badge b-IDLE';
+  } else {
+    $('kpiLevel').textContent = lvl; $('kpiLevel').className = 'badge b-' + lvl;
+  }
+  $('kpiTarget').textContent = 'target · ' + shortModel(report.target_model);
+  $('kpiAttacks').textContent = inconclusive ? '0' : report.total_attacks_run;
+  const cats = report.category_results || {};
+  $('kpiAttacksSub').textContent = inconclusive
+    ? (errs + ' attempt(s) failed — none scored')
+    : ('across ' + Object.keys(cats).length + ' OWASP categories');
+  $('kpiAsr').textContent = inconclusive ? '—' : (Math.round((report.overall_asr || 0) * 100) + '%');
+
+  // top exposure
+  let topK = null, topV = -1;
+  for (const [k,v] of Object.entries(cats)) if ((v.risk_score||0) > topV) { topV = v.risk_score; topK = k; }
+  $('kpiTopCat').textContent = topK || '—';
+  $('kpiTopCatSub').textContent = topK ? `${OWASP_NAMES[topK]||''} · risk ${topV}` : 'highest-risk category';
+
+  $('exportWrap').innerHTML =
+    `<a href="/api/export/${runId}/csv" title="All attack rows incl. prompts & responses (download)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg> CSV</a>
+     <a href="/api/report/${runId}" target="_blank" title="Full JSON: attacker prompts + target responses"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9h8M8 13h6M21 12c0 4.97-4.03 9-9 9a8.96 8.96 0 01-4-.94L3 21l.94-5A8.96 8.96 0 013 12c0-4.97 4.03-9 9-9s9 4.03 9 9z"/></svg> Conversations</a>
+     <a href="/api/export/${runId}/json" target="_blank" title="Risk summary JSON"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg> Risk JSON</a>`;
+
+  const ck = Object.keys(cats).sort();
+  drawBar('chartCat', 'cat', ck.map(k=>k), ck.map(k=>cats[k].risk_score));
+  const dims = report.thai_dimension_results || {};
+  const dk = Object.keys(dims).sort();
+  drawBar('chartDim', 'dim', dk.map(k=>dims[k].category_name), dk.map(k=>dims[k].risk_score));
+
+  const vb = $('violBody');
+  if (!violations.length) {
+    vb.innerHTML = inconclusive
+      ? '<tr><td colspan="5"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><div class="t">Scan inconclusive — no attacks completed</div><div class="s">Every attempt errored out (API / rate limit), so nothing was tested. This is not a safe result.</div></div></td></tr>'
+      : '<tr><td colspan="5"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><div class="t">No successful breaches recorded</div><div class="s">The target resisted every attack in this scan.</div></div></td></tr>';
+  } else {
+    vb.innerHTML = '';
+    violations.slice().sort((a,b)=>(b.success_score||0)-(a.success_score||0)).forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="id-cell">${esc(d.attack_id)}</td>
+        <td><span class="tag">${esc(d.owasp_category)}</span></td>
+        <td class="score ${sevClass(d.success_score)}">${(d.success_score??0).toFixed(1)}</td>
+        <td class="muted-cell">${esc(d.violation_type)}</td>
+        <td class="muted-cell">${esc((d.evidence||'').slice(0,80))}</td>`;
+      vb.appendChild(tr);
+    });
+  }
+
+  renderCritical(report.critical_findings);
+  renderRemediation(report.remediation);
+
+  // inconclusive notice — set LAST so renderCritical() (which clears the banner when
+  // there are no critical findings) can't wipe it.
+  if (inconclusive) {
+    const cb = $('criticalBanner');
+    cb.hidden = false; cb.className = '';
+    cb.style.cssText = 'background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);color:#fbbf24;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.5';
+    cb.innerHTML = '⚠ <b>Scan inconclusive — nothing was tested.</b> All ' + errs +
+      ' attack attempt(s) failed before the target responded (API error / rate limit) and were excluded from scoring. This is <u>not</u> a clean bill of health. Most often this is OpenRouter’s free-tier daily cap — add credits, drop the “:free” suffix, or switch target model, then re-run.';
+    if (!report.remediation || !report.remediation.length) {
+      $('remediationWrap').innerHTML = '<div class="rem-empty"><div class="rt" style="color:#fbbf24">⚠ No analysis — scan did not complete</div><div class="s" style="color:var(--muted);font-size:12px;margin-top:4px">Every attack errored out, so there is nothing to analyze. Re-run once the target responds.</div></div>';
+    }
+  }
+}
+
+/* ---------- critical findings banner ---------- */
+function renderCritical(findings) {
+  const el = $('criticalBanner');
+  el.style.cssText = '';  // clear any inline style left by the inconclusive banner
+  if (!findings || !findings.length) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.className = 'crit-banner';
+  el.innerHTML =
+    `<div class="ct"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Critical findings — risk score was floored</div>
+     <ul>${findings.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`;
+}
+
+/* ---------- vulnerability analysis & remediation ---------- */
+function renderRemediation(items) {
+  const wrap = $('remediationWrap');
+  if (!wrap) return;
+  if (!items || !items.length) {
+    wrap.innerHTML = '<div class="rem-empty"><div class="rt">✓ No exploitable vulnerabilities found</div><div class="s" style="color:var(--muted);font-size:12px;margin-top:4px">The target held up against every attack vector in this scan.</div></div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  items.forEach(it => {
+    const rc = it.risk_score || 0;
+    const col = rc > 7 ? 'var(--danger)' : rc > 4 ? 'var(--warn)' : rc > 0 ? 'var(--mid)' : 'var(--ok)';
+    const bg = rc > 7 ? 'rgba(244,63,94,.14)' : rc > 4 ? 'rgba(245,158,11,.14)' : 'rgba(251,191,36,.12)';
+    const fixes = (it.fixes||[]).map(f=>`<li>${esc(f)}</li>`).join('');
+    const vios = (it.violation_actions||[]).map(v=>
+      `<div class="rem-viol"><div class="vh">${esc(v.violation_type)} · ${esc(v.severity||'')}</div><div class="va"><b style="color:var(--text-2)">${esc(v.summary||'')}</b><br>${esc(v.action||'')}</div></div>`
+    ).join('');
+    const div = document.createElement('div');
+    div.className = 'rem-item';
+    div.style.borderLeftColor = col;
+    div.innerHTML =
+      `<div class="rem-head">
+         <div class="rl"><span class="rcode">${esc(it.owasp_category)}</span> ${esc(it.title)}</div>
+         <span class="rem-risk" style="color:${col};background:${bg}">risk ${rc}</span>
+       </div>
+       <div class="rem-sec"><div class="sl">⚠ What's the weakness</div><div class="stxt">${esc(it.what)}</div></div>
+       <div class="rem-sec"><div class="sl">💥 Impact</div><div class="stxt">${esc(it.impact)}</div></div>
+       ${vios ? `<div class="rem-sec"><div class="sl">🎯 Observed in this scan</div>${vios}</div>` : ''}
+       <div class="rem-sec"><div class="sl">🛠 How to fix</div><ul class="rem-fixes">${fixes}</ul></div>`;
+    wrap.appendChild(div);
+  });
+}
+
+function barColor(v) { return v > 7 ? '#f43f5e' : (v > 4 ? '#f59e0b' : '#10b981'); }
+function drawBar(canvasId, slot, labels, data) {
+  const prev = slot === 'cat' ? catChart : dimChart;
+  if (prev) prev.destroy();
+  const chart = new Chart($(canvasId), {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: data.map(barColor), borderRadius: 6, maxBarThickness: 38 }] },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#161d2c', borderColor: '#232c3e', borderWidth: 1, titleColor: '#e8ecf4', bodyColor: '#9aa6bb', padding: 10, displayColors: false } },
+      scales: {
+        y: { beginAtZero: true, max: 10, ticks: { color: '#5f6b82', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(255,255,255,.05)' }, border: { display: false } },
+        x: { ticks: { color: '#9aa6bb', font: { family: 'Inter', size: 10 } }, grid: { display: false }, border: { display: false } }
+      }
+    }
+  });
+  if (slot === 'cat') catChart = chart; else dimChart = chart;
+}
+
+/* ---------- scan ---------- */
+async function startScan() {
+  $('errBox').textContent = '';
+  const modes = [];
+  if ($('cfgSingle').checked) modes.push('single_turn');
+  if ($('cfgMulti').checked) modes.push('multi_turn');
+  if (!modes.length) { $('errBox').textContent = 'Select at least one test mode.'; return; }
+
+  const size = SIZE_MAP[$('cfgSize').value];
+  const seedVal = $('cfgSeed').value ? parseInt($('cfgSeed').value, 10) : null;
+  const body = {
+    target_model: $('cfgTarget').value.trim() || undefined,
+    modes, max_single: size.max_single, max_multi: size.max_multi, seed: seedVal,
+    owasp_categories: selectedCats.size ? [...selectedCats] : null,
+    sources: selectedSrcs.size ? [...selectedSrcs] : null,
+  };
+
+  feedRows = 0; violations = [];
+  $('feedBody').innerHTML = '<tr><td colspan="8"><div class="empty"><div class="t">Launching scan…</div></div></td></tr>';
+  $('feedCount').textContent = '';
+  $('analysisCard').hidden = true;
+  $('btnScan').disabled = true;
+  $('progWrap').hidden = false; $('progBar').style.width = '0%';
+  $('statusPill').className = 'pill scanning'; $('statusPill').innerHTML = '<span class="dot"></span> Scanning…';
+
+  let res;
+  try {
+    res = await (await fetch('/api/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })).json();
+  } catch (e) { $('errBox').textContent = 'Request failed: ' + e; resetBtn(); return; }
+  if (res.error || !res.run_id) { $('errBox').textContent = res.error || 'No run started.'; resetBtn(); return; }
+
+  const total = res.total_prompts || 0; let done = 0;
+  let gotComplete = false;
+  // if the stream dies before 'complete' (server --reload restart mid-scan, network
+  // blip, etc.) the background task may still have persisted the report — pull it from
+  // the DB so the dashboard never stays stuck on the IDLE placeholder.
+  const recoverFromDb = () => setTimeout(() => { if (!gotComplete) { loadReport(res.run_id); loadRuns(); } }, 1200);
+  if (es) es.close();
+  es = new EventSource('/api/stream/' + res.run_id);
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === 'result') {
+      addFeedRow(e.data); done++;
+      $('progBar').style.width = Math.min(100, (done / Math.max(total,1)) * 100) + '%';
+    } else if (e.type === 'complete') {
+      gotComplete = true;
+      $('progBar').style.width = '100%';
+      renderDashboard(e.report, res.run_id);
+      es.close(); resetBtn(); loadRuns();
+    } else if (e.type === 'error') {
+      $('errBox').textContent = 'Scan error: ' + (e.message || '');
+    } else if (e.type === 'timeout') { es.close(); resetBtn(); recoverFromDb(); }
+  };
+  es.onerror = () => { es.close(); resetBtn(); recoverFromDb(); };
+}
+
+function resetBtn() {
+  $('btnScan').disabled = false;
+  $('statusPill').className = 'pill'; $('statusPill').innerHTML = '<span class="dot"></span> Ready';
+  setTimeout(() => { $('progWrap').hidden = true; }, 1200);
+}
+
+$('btnScan').onclick = startScan;
+
+/* ---------- target honeypot ---------- */
+async function loadHoneypot() {
+  try {
+    const cfg = await (await fetch('/api/target-config')).json();
+    knownSecrets = cfg.known_secrets || [];
+    targetSystemPrompt = cfg.system_prompt || '';
+    $('honeypotPrompt').textContent = cfg.system_prompt || '(none)';
+    const wrap = $('honeypotSecrets'); wrap.innerHTML = '';
+    knownSecrets.forEach(s => {
+      const row = document.createElement('div');
+      row.style.cssText = 'background:var(--surface-3);padding:7px 11px;border-radius:6px;border:1px solid var(--border);word-break:break-all;color:#fda4af';
+      row.textContent = s;
+      wrap.appendChild(row);
+    });
+    $('honeypotSecretCount').textContent = knownSecrets.length + ' canary tokens';
+  } catch (e) {
+    $('honeypotSecretCount').textContent = 'unavailable';
+  }
+}
+$('honeypotHead').onclick = () => {
+  const body = $('honeypotBody');
+  body.hidden = !body.hidden;
+  $('honeypotToggle').textContent = body.hidden ? 'show ▾' : 'hide ▴';
+};
+
+/* highlight any leaked canary inside a response */
+function highlightLeaks(text) {
+  if (!text || !knownSecrets.length) return esc(text);
+  let html = esc(text);
+  knownSecrets.forEach(s => {
+    if (!s) return;
+    const escSecret = esc(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    html = html.replace(new RegExp(escSecret, 'g'),
+      `<mark style="background:rgba(244,63,94,.25);color:#fda4af;padding:1px 4px;border-radius:3px;font-weight:600">${esc(s)} 🚨</mark>`);
+  });
+  return html;
+}
+
+loadHoneypot();
+loadPool();
+loadRuns();
+</script>
+</body>
+</html>
