@@ -959,10 +959,39 @@ async function startScan() {
 
   const total = res.total_prompts || 0; let done = 0;
   let gotComplete = false;
-  // if the stream dies before 'complete' (server --reload restart mid-scan, network
-  // blip, etc.) the background task may still have persisted the report — pull it from
-  // the DB so the dashboard never stays stuck on the IDLE placeholder.
-  const recoverFromDb = () => setTimeout(() => { if (!gotComplete) { loadReport(res.run_id); loadRuns(); } }, 1200);
+  let recovering = false;
+  // If the live stream ends before the 'complete' event — a slow reasoning target can
+  // outlast the SSE window, and EventSource.onerror fires on any transient drop — the
+  // background task is almost always still running and persists the report a bit later.
+  // So POLL the saved run until its report shows up, then render from the DB. (The old
+  // code took a single shot 1.2s later; if the scan wasn't finished yet it gave up and
+  // left the dashboard + Scan History stuck on the IDLE / "—" placeholder.)
+  const recoverFromDb = () => {
+    if (gotComplete || recovering) return;
+    recovering = true;
+    $('statusPill').className = 'pill scanning';
+    $('statusPill').innerHTML = '<span class="dot"></span> Finalizing…';
+    $('progWrap').hidden = false;
+    let tries = 0;
+    const MAX_TRIES = 600;  // ~20 min at 2s — covers long multi-turn reasoning scans
+    const poll = async () => {
+      if (gotComplete) { recovering = false; return; }
+      tries++;
+      try {
+        const data = await (await fetch('/api/report/' + res.run_id)).json();
+        if (data && data.run && (data.run.report_json || data.run.completed_at)) {
+          recovering = false;
+          loadReport(res.run_id);   // renders the dashboard from the saved report
+          loadRuns();               // refresh history → real level + score
+          resetBtn();
+          return;
+        }
+      } catch (e) {}
+      if (tries < MAX_TRIES) { setTimeout(poll, 2000); }
+      else { recovering = false; loadRuns(); resetBtn(); }   // give up gracefully
+    };
+    setTimeout(poll, 1200);
+  };
   if (es) es.close();
   es = new EventSource('/api/stream/' + res.run_id);
   es.onmessage = (ev) => {

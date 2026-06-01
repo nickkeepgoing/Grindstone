@@ -5,14 +5,13 @@ import csv
 import io
 import random
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, StreamingResponse
 from dotenv import load_dotenv, dotenv_values
 import logging
 import litellm
@@ -31,9 +30,8 @@ for _k, _v in dotenv_values(_DOTENV).items():
 
 from orchestrator import run_campaign
 from risk_engine import calculate_risk, RiskReport
-from target_config import get_system_prompt, get_known_secrets
+from target_config import get_system_prompt, get_known_secrets, generate_canaries, CanarySet
 from remediation import build_remediation
-import json as json_module
 
 # ตั้งค่า litellm
 litellm.set_verbose = False
@@ -61,8 +59,17 @@ def normalize_model(model: str) -> str:
         return f"openrouter/{model}"
     return model
 
-app = FastAPI(title="GRINDSTONE", version="0.1.0")
-templates = Jinja2Templates(directory="templates")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Starlette 1.x REMOVED the @app.on_event("startup") decorator (it silently no
+    # longer fires) — without this lifespan, init_db() never runs and the first
+    # DB write fails with "no such table: runs". (BASE_DIR / init_db are resolved
+    # at startup time, after the module is fully imported.)
+    (BASE_DIR / "reports").mkdir(exist_ok=True)
+    await init_db()
+    yield
+
+app = FastAPI(title="GRINDSTONE", version="0.1.0", lifespan=lifespan)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = str(BASE_DIR / "reports" / "grindstone.db")
@@ -107,12 +114,35 @@ async def init_db():
                 target_response TEXT
             )
         """)
+        # v2 migrations — additive, nullable columns only (SQLite has no
+        # "ADD COLUMN IF NOT EXISTS"). Each guarded so re-runs and pre-v2 DBs
+        # both work; old rows read these as NULL → engine treats them as v1.
+        _RUNS_V2_COLS = [
+            "scenario_asr REAL", "turn_asr REAL", "total_scenarios INTEGER",
+            "compromised_scenarios INTEGER", "total_turns INTEGER",
+            "compromised_turns INTEGER", "max_secret_severity REAL",
+            "schema_version INTEGER",
+        ]
+        _ATTACK_V2_COLS = [
+            "secret_type TEXT", "secret_severity REAL", "matched_canary_id TEXT",
+            "leak_confidence REAL", "evidence_valid INTEGER", "owasp_subtechnique TEXT",
+            "context_corruption INTEGER", "judge_a_score REAL", "judge_b_score REAL",
+            "judge_verdict TEXT", "detail_json TEXT",
+            # v2.1 — provenance + 3-judge + corruption scoring
+            "provenance_origin TEXT", "judge_rule_score REAL", "judge_conflict INTEGER",
+            "corruption_score REAL",
+        ]
+        for _col in _RUNS_V2_COLS:
+            try:
+                await db.execute(f"ALTER TABLE runs ADD COLUMN {_col}")
+            except Exception:
+                pass  # column already exists
+        for _col in _ATTACK_V2_COLS:
+            try:
+                await db.execute(f"ALTER TABLE attack_results ADD COLUMN {_col}")
+            except Exception:
+                pass  # column already exists
         await db.commit()
-
-@app.on_event("startup")
-async def startup():
-    (BASE_DIR / "reports").mkdir(exist_ok=True)
-    await init_db()
 
 def _read_pool(filename: str) -> list:
     f = PROMPTS_DIR / filename
@@ -226,6 +256,10 @@ async def start_run(request: Request, background_tasks: BackgroundTasks):
     if not prompts:
         return {"error": "No prompts found", "run_id": None}
 
+    # Per-run honeypot canaries: 4 typed secrets scoped to this run_id, seeded into
+    # the target system prompt so any leak is attributable to this scan.
+    canary_set = generate_canaries(run_id)
+
     # บันทึก attack settings ที่ใช้กับ run นี้ เพื่อให้ Scan History ย้อนดูได้
     scan_config = {
         "modes": modes,
@@ -236,6 +270,10 @@ async def start_run(request: Request, background_tasks: BackgroundTasks):
         "thai_dimensions": thai_dimensions,
         "sources": sources,
         "total_prompts": len(prompts),
+        "canaries": [
+            {"canary_id": c.canary_id, "type": c.type, "value": c.value}
+            for c in canary_set.canaries
+        ],
     }
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -245,22 +283,39 @@ async def start_run(request: Request, background_tasks: BackgroundTasks):
         )
         await db.commit()
 
-    background_tasks.add_task(execute_run, run_id, prompts, target_model, scan_config)
+    background_tasks.add_task(execute_run, run_id, prompts, target_model, scan_config, canary_set)
     return {"run_id": run_id, "total_prompts": len(prompts)}
 
-async def execute_run(run_id: str, prompts: list, target_model: str, scan_config: dict | None = None):
+async def execute_run(run_id: str, prompts: list, target_model: str,
+                      scan_config: dict | None = None, canary_set: CanarySet | None = None):
     all_results = []
 
     async def on_result(result: dict):
         active_runs[run_id].append({"type": "result", "data": result})
         all_results.append(result)
 
+        # verbose / variable-shape fields go in detail_json; scoring-relevant ones
+        # are promoted to their own columns above for SQL querying.
+        detail = {
+            "reasoning": result.get("reasoning"),
+            "confidence": result.get("confidence"),
+            "confidence_reasons": result.get("confidence_reasons"),
+            "corruption_types": result.get("corruption_types"),
+            "layer1_on_track": result.get("layer1_on_track"),
+            "strategy": result.get("strategy"),
+        }
+        _cc = result.get("context_corruption")
+        _ev = result.get("evidence_valid")
+        _cf = result.get("judge_conflict")
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
                 INSERT INTO attack_results
                 (run_id, attack_id, owasp_category, thai_dimension, mode, turn_number,
-                 success_score, violation_type, evidence, similarity_score, attack_prompt, target_response)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 success_score, violation_type, evidence, similarity_score, attack_prompt, target_response,
+                 secret_type, secret_severity, matched_canary_id, leak_confidence, evidence_valid,
+                 owasp_subtechnique, context_corruption, judge_a_score, judge_b_score, judge_verdict, detail_json,
+                 provenance_origin, judge_rule_score, judge_conflict, corruption_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_id,
                 result.get("attack_id"),
@@ -273,12 +328,27 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
                 result.get("evidence"),
                 result.get("similarity_score"),
                 result.get("attack_prompt", "")[:2000],
-                result.get("target_response", "")[:2000]
+                result.get("target_response", "")[:2000],
+                result.get("secret_type"),
+                result.get("secret_severity"),
+                result.get("matched_canary_id"),
+                result.get("leak_confidence"),
+                (None if _ev is None else int(bool(_ev))),
+                result.get("owasp_subtechnique"),
+                (None if _cc is None else int(bool(_cc))),
+                result.get("judge_a_score"),
+                result.get("judge_b_score"),
+                result.get("judge_verdict"),
+                json.dumps(detail, ensure_ascii=False),
+                result.get("provenance_origin"),
+                result.get("judge_rule_score"),
+                (None if _cf is None else int(bool(_cf))),
+                result.get("corruption_score"),
             ))
             await db.commit()
 
     try:
-        await run_campaign(prompts, target_model, run_id, callback=on_result)
+        await run_campaign(prompts, target_model, run_id, callback=on_result, canary_set=canary_set)
     except Exception as e:
         _log.error("Campaign error [%s]: %s", run_id, e)
         active_runs[run_id].append({"type": "error", "message": str(e)})
@@ -286,8 +356,9 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
     # Build + persist the risk report. Guard everything so the run ALWAYS emits
     # "complete" — otherwise the SSE stream hangs until the 5-minute timeout.
     try:
-        report = calculate_risk(all_results, target_model)
+        report = calculate_risk(all_results, target_model, canary_set=canary_set)
         report_dict = {
+            "schema_version": report.schema_version,
             "target_model": report.target_model,
             "overall_risk_score": report.overall_risk_score,
             "risk_level": report.risk_level,
@@ -295,6 +366,21 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
             "total_errors": report.total_errors,
             "total_attempted": report.total_attempted,
             "overall_asr": report.overall_asr,
+            # dual ASR + taxonomy summary (v2)
+            "summary": {
+                "scenario_asr": report.scenario_asr,
+                "turn_asr": report.turn_asr,
+                "weighted_asr": report.weighted_asr,
+                "severity_adjusted_asr": report.severity_adjusted_asr,
+                "total_scenarios": report.total_scenarios,
+                "compromised_scenarios": report.compromised_scenarios,
+                "total_turns": report.total_turns,
+                "compromised_turns": report.compromised_turns,
+                "credential_leak_turn_rate": report.credential_leak_turn_rate,
+                "max_secret_severity": report.max_secret_severity,
+                "complexity_max": report.complexity_max,
+                "complexity_score_max": report.complexity_score_max,
+            },
             "category_results": {
                 k: {
                     "category_code": v.category_code,
@@ -303,7 +389,18 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
                     "asr": v.asr,
                     "severity_weight": v.severity_weight,
                     "risk_score": v.risk_score,
-                    "violations": v.violations
+                    "violations": v.violations,
+                    # v2
+                    "scenario_asr": v.scenario_asr,
+                    "turn_asr": v.turn_asr,
+                    "weighted_asr": v.weighted_asr,
+                    "severity_adjusted_asr": v.severity_adjusted_asr,
+                    "total_scenarios": v.total_scenarios,
+                    "compromised_scenarios": v.compromised_scenarios,
+                    "total_turns": v.total_turns,
+                    "compromised_turns": v.compromised_turns,
+                    "max_finding_risk": v.max_finding_risk,
+                    "subtechniques": v.subtechniques,
                 }
                 for k, v in report.category_results.items()
             },
@@ -313,11 +410,20 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
                     "category_name": v.category_name,
                     "total_attacks": v.total_attacks,
                     "asr": v.asr,
-                    "risk_score": v.risk_score
+                    "risk_score": v.risk_score,
+                    # v2
+                    "scenario_asr": v.scenario_asr,
+                    "turn_asr": v.turn_asr,
+                    "total_scenarios": v.total_scenarios,
+                    "compromised_scenarios": v.compromised_scenarios,
+                    "total_turns": v.total_turns,
+                    "compromised_turns": v.compromised_turns,
                 }
                 for k, v in report.thai_dimension_results.items()
             },
             "critical_findings": report.critical_findings,
+            "canary_audit": report.canary_audit,
+            "dual_judge": report.dual_judge,
             "scan_config": scan_config or {},
         }
         # attach remediation (what's vulnerable + how to fix) derived from breaches
@@ -327,13 +433,23 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
 
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
-                UPDATE runs SET completed_at=?, overall_risk_score=?, risk_level=?, report_json=?
+                UPDATE runs SET completed_at=?, overall_risk_score=?, risk_level=?, report_json=?,
+                    scenario_asr=?, turn_asr=?, total_scenarios=?, compromised_scenarios=?,
+                    total_turns=?, compromised_turns=?, max_secret_severity=?, schema_version=?
                 WHERE run_id=?
             """, (
                 datetime.utcnow().isoformat(),
                 report.overall_risk_score,
                 report.risk_level,
                 json.dumps(report_dict, ensure_ascii=False),
+                report.scenario_asr,
+                report.turn_asr,
+                report.total_scenarios,
+                report.compromised_scenarios,
+                report.total_turns,
+                report.compromised_turns,
+                report.max_secret_severity,
+                report.schema_version,
                 run_id
             ))
             await db.commit()
@@ -353,6 +469,20 @@ async def execute_run(run_id: str, prompts: list, target_model: str, scan_config
             "scan_config": scan_config or {},
             "remediation": [],
         }
+        # Still mark the run finalized in the DB, so Scan History leaves the IDLE
+        # placeholder and the client's DB-poll recovery can detect completion instead
+        # of polling until it gives up. Guarded so a secondary DB error here can't
+        # block the 'complete' event below.
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "UPDATE runs SET completed_at=?, overall_risk_score=?, risk_level=?, report_json=? WHERE run_id=?",
+                    (datetime.utcnow().isoformat(), 0.0, report_dict["risk_level"],
+                     json.dumps(report_dict, ensure_ascii=False), run_id),
+                )
+                await db.commit()
+        except Exception as e2:
+            _log.error("Fallback report persist failed [%s]: %s", run_id, e2)
 
     active_runs[run_id].append({"type": "complete", "report": report_dict})
 
@@ -361,7 +491,10 @@ async def stream_results(run_id: str):
     async def event_generator() -> AsyncGenerator[str, None]:
         sent = 0
         timeout = 0
-        while timeout < 300:  # 5 min timeout
+        # Long multi-turn scans against slow reasoning targets (e.g. deepseek-r1) can run
+        # well past 5 min; keep the live stream open up to 30 min so the 'complete' event
+        # is delivered over SSE. (If the stream still drops, the client polls the DB.)
+        while timeout < 1800:  # 30 min
             events = active_runs.get(run_id, [])
             while sent < len(events):
                 event = events[sent]

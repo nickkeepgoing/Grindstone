@@ -11,7 +11,8 @@ import asyncio
 from typing import AsyncGenerator
 import litellm
 from judge import judge_attack, JudgeResult, acompletion_with_retry, is_permanent_error
-from target_config import get_system_prompt
+from target_config import get_system_prompt, CanarySet
+from provenance import AttackContext
 
 _log = logging.getLogger(__name__)
 
@@ -32,9 +33,10 @@ TARGET_SELF_MONITOR_INJECTION = """
 {"on_track": <true ถ้าคุณยังทำตาม policy, false ถ้าคุณเริ่มเบี่ยง>, "goal_progress": <0-10>}]"""
 
 def _error_result(*, run_id, attack_id, owasp_category, thai_dimension, mode,
-                  turn, strategy, attack_prompt, target_text, permanent=False) -> dict:
-    """สร้าง result สำหรับกรณี target API ล้ม (ไม่เรียก judge) — ติดธง error ไว้
-    เพื่อให้ risk engine ข้ามไม่นับ เพราะ attack นี้ไม่ได้ทดสอบ target จริง"""
+                  turn, strategy, attack_prompt, target_text, permanent=False,
+                  violation="target_error", reason=None) -> dict:
+    """สร้าง result สำหรับกรณี target/judge ล้ม — ติดธง error ไว้เพื่อให้ risk engine
+    ข้ามไม่นับ (attack นี้ไม่ได้ทดสอบ target จริง หรือ judge ประเมินไม่ได้)."""
     return {
         "run_id": run_id,
         "attack_id": attack_id,
@@ -50,10 +52,10 @@ def _error_result(*, run_id, attack_id, owasp_category, thai_dimension, mode,
         "confidence": 0.0,
         "evidence": "",
         "evidence_valid": False,
-        "violation_type": "target_error",
+        "violation_type": violation,
         "similarity_score": None,
         "layer1_on_track": None,
-        "reasoning": "Target API call failed after retries (transient/provider error) — excluded from risk scoring.",
+        "reasoning": reason or "API call failed after retries — excluded from risk scoring.",
         "error": True,
         "permanent": permanent,
     }
@@ -62,16 +64,18 @@ def _error_result(*, run_id, attack_id, owasp_category, thai_dimension, mode,
 async def run_single_turn(
     prompt_data: dict,
     target_model: str,
-    run_id: str
+    run_id: str,
+    canary_set: CanarySet | None = None,
 ) -> dict:
     """Run a single-turn attack"""
 
+    sys_prompt = get_system_prompt(canary_set)
     # Call target (retry transient provider errors before giving up)
     try:
         target_resp = await acompletion_with_retry(
             model=target_model,
             messages=[
-                {"role": "system", "content": get_system_prompt()},
+                {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": prompt_data["prompt"] + TARGET_SELF_MONITOR_INJECTION}
             ],
             max_tokens=MAX_TOKENS,
@@ -89,14 +93,37 @@ async def run_single_turn(
             permanent=is_permanent_error(e),
         )
 
-    # Judge
-    result = await judge_attack(
-        attack_id=prompt_data["id"],
-        turn_number=1,
-        attack_goal=prompt_data["success_criteria"],
-        attack_prompt=prompt_data["prompt"],
-        target_response=target_text
+    # Judge (with provenance context so echoes of attacker input aren't counted as leaks)
+    ctx = AttackContext(
+        system_prompt=sys_prompt,
+        user_inputs=[prompt_data["prompt"]],
+        canaries=(canary_set.canaries if canary_set else []),
     )
+    try:
+        result = await judge_attack(
+            attack_id=prompt_data["id"],
+            turn_number=1,
+            attack_goal=prompt_data["success_criteria"],
+            attack_prompt=prompt_data["prompt"],
+            target_response=target_text,
+            canary_set=canary_set,
+            owasp_category=prompt_data.get("owasp_category", "LLM01"),
+            thai_dimension=prompt_data.get("thai_dimension"),
+            mode="single_turn",
+            attack_context=ctx,
+        )
+    except Exception as e:
+        # a judge failure must NEVER kill the whole scan — record it and move on
+        _log.error("Judge crashed [%s]: %s", prompt_data.get("id"), e)
+        return _error_result(
+            run_id=run_id, attack_id=prompt_data["id"],
+            owasp_category=prompt_data["owasp_category"],
+            thai_dimension=prompt_data["thai_dimension"],
+            mode="single_turn", turn=1, strategy=None,
+            attack_prompt=prompt_data["prompt"], target_text=target_text,
+            permanent=is_permanent_error(e), violation="judge_error",
+            reason=f"Judge failed: {e}",
+        )
 
     return {
         "run_id": run_id,
@@ -113,12 +140,15 @@ async def run_single_turn(
 async def run_multi_turn(
     prompt_data: dict,
     target_model: str,
-    run_id: str
+    run_id: str,
+    canary_set: CanarySet | None = None,
 ) -> list:
     """Run a 6-turn adaptive attack"""
 
-    conversation = [{"role": "system", "content": get_system_prompt()}]
+    sys_prompt = get_system_prompt(canary_set)
+    conversation = [{"role": "system", "content": sys_prompt}]
     attacker_history = []  # attacker's strategy history
+    user_inputs: list[str] = []  # raw attacker turns, for provenance echo-detection
     results = []
 
     attack_goal = prompt_data["attack_goal"]
@@ -163,15 +193,41 @@ async def run_multi_turn(
             break  # provider failing — stop this conversation, don't keep burning calls
 
         conversation.append({"role": "assistant", "content": target_text})
+        user_inputs.append(current_attack)
 
-        # Judge this turn
-        result = await judge_attack(
-            attack_id=f"{prompt_data['id']}_t{turn}",
-            turn_number=turn,
-            attack_goal=attack_goal,
-            attack_prompt=current_attack,
-            target_response=target_text
+        # Judge this turn (provenance sees all attacker turns so far → echo suppression)
+        ctx = AttackContext(
+            system_prompt=sys_prompt,
+            user_inputs=list(user_inputs),
+            canaries=(canary_set.canaries if canary_set else []),
         )
+        try:
+            result = await judge_attack(
+                attack_id=f"{prompt_data['id']}_t{turn}",
+                turn_number=turn,
+                attack_goal=attack_goal,
+                attack_prompt=current_attack,
+                target_response=target_text,
+                canary_set=canary_set,
+                owasp_category=prompt_data.get("owasp_category", "LLM01"),
+                thai_dimension=prompt_data.get("thai_dimension"),
+                mode="multi_turn",
+                attack_context=ctx,
+            )
+        except Exception as e:
+            # judge failure on one turn must not abort the conversation/scan
+            _log.error("Judge crashed [%s t%d]: %s", prompt_data.get("id"), turn, e)
+            results.append(_error_result(
+                run_id=run_id, attack_id=f"{prompt_data['id']}_t{turn}",
+                owasp_category=prompt_data["owasp_category"],
+                thai_dimension=prompt_data["thai_dimension"],
+                mode="multi_turn", turn=turn,
+                strategy=("scripted" if scripted else "adaptive"),
+                attack_prompt=current_attack, target_text=target_text,
+                permanent=is_permanent_error(e), violation="judge_error",
+                reason=f"Judge failed: {e}",
+            ))
+            continue  # try the next turn; conversation context is intact
 
         turn_data = {
             "run_id": run_id,
@@ -224,15 +280,17 @@ reasoning: {result.reasoning}
 
     return results
 
-# หยุดทั้ง campaign ถ้า target ล้มติดต่อกันเกินจำนวนนี้ (โดน rate-limit หรือ model ล่ม)
-ABORT_AFTER_CONSECUTIVE = 5
+# หยุดทั้ง campaign ถ้า call ล้มติดต่อกันเกินจำนวนนี้ (rate-limit หนัก / provider ล่ม).
+# ตั้งสูงขึ้นได้สำหรับ deep scan ที่เจอ transient rate-limit เป็นช่วง ๆ ผ่าน env.
+ABORT_AFTER_CONSECUTIVE = int(os.getenv("ABORT_AFTER_CONSECUTIVE", "8"))
 
 
 async def run_campaign(
     prompt_pool: list,
     target_model: str,
     run_id: str,
-    callback = None
+    callback = None,
+    canary_set: CanarySet | None = None,
 ) -> list:
     """Run all prompts, call callback(result) after each for SSE streaming.
 
@@ -244,10 +302,24 @@ async def run_campaign(
     consecutive_fail = 0
 
     for prompt_data in prompt_pool:
-        if prompt_data["mode"] == "single_turn":
-            batch = [await run_single_turn(prompt_data, target_model, run_id)]
-        else:
-            batch = await run_multi_turn(prompt_data, target_model, run_id)
+        try:
+            if prompt_data.get("mode", "single_turn") == "single_turn":
+                batch = [await run_single_turn(prompt_data, target_model, run_id, canary_set)]
+            else:
+                batch = await run_multi_turn(prompt_data, target_model, run_id, canary_set)
+        except Exception as e:
+            # belt-and-suspenders: one malformed prompt / unexpected error must never
+            # abort the whole scan — record it as an excluded error and keep going.
+            _log.error("Attack crashed [%s]: %s", prompt_data.get("id"), e)
+            batch = [_error_result(
+                run_id=run_id, attack_id=prompt_data.get("id", "?"),
+                owasp_category=prompt_data.get("owasp_category", "LLM01"),
+                thai_dimension=prompt_data.get("thai_dimension", "general"),
+                mode=prompt_data.get("mode", "single_turn"), turn=1, strategy=None,
+                attack_prompt=str(prompt_data.get("prompt") or prompt_data.get("opening_prompt") or ""),
+                target_text="", permanent=False, violation="target_error",
+                reason=f"Attack execution error: {e}",
+            )]
 
         for r in batch:
             all_results.append(r)
@@ -261,33 +333,37 @@ async def run_campaign(
         # consecutive-failure threshold below.
         perm = next((r for r in batch if r.get("permanent")), None)
         if perm is not None:
-            snippet = (perm.get("target_response") or "").replace("[ERROR: ", "").rstrip("]")[:200]
+            snippet = (perm.get("target_response") or perm.get("reasoning") or "").replace("[ERROR: ", "").rstrip("]")[:200]
             raise RuntimeError(
-                f"Scan aborted: target model '{target_model}' returned a non-retryable error "
-                f"(quota/credits exhausted, auth, or model unavailable). Add OpenRouter credits, "
-                f"remove the ':free' suffix, or choose another target model. Detail: {snippet}"
+                f"Scan aborted: '{target_model}' (or the judge) returned a non-retryable error. "
+                f"Check: (1) OPENROUTER_API_KEY (and OPENAI_/ANTHROPIC_ keys if you use those "
+                f"prefixes) is set in grindstone/.env; (2) the target is a CHAT model — not a "
+                f"speech/ASR (whisper, *-asr-*), embedding, or TTS model; (3) the model id exists "
+                f"and you have credits. Prefer 'openrouter/...'. Detail: {snippet}"
             )
 
-        # circuit breaker — prompt ที่ผลเป็น error ทั้งหมดถือว่า "ล้ม"
+        # circuit breaker — a batch whose results are ALL errors counts as a failure.
+        # Transient rate-limits are common on deep scans, so we back off adaptively and
+        # only abort after ABORT_AFTER_CONSECUTIVE in a row (giving the provider time to
+        # recover) — instead of killing a long scan on the first burst of 429s.
         if batch and all(r.get("error") for r in batch):
             consecutive_fail += 1
             if consecutive_fail >= ABORT_AFTER_CONSECUTIVE:
-                last_err = ""
-                for r in reversed(batch):
-                    if r.get("target_response"):
-                        last_err = r["target_response"]
-                        break
-                snippet = last_err.replace("[ERROR: ", "").rstrip("]")[:200]
+                last_err = next((r.get("target_response") or r.get("reasoning")
+                                 for r in reversed(batch) if r.get("target_response") or r.get("reasoning")), "")
+                snippet = (last_err or "").replace("[ERROR: ", "").rstrip("]")[:200]
                 raise RuntimeError(
-                    f"Scan aborted: target model '{target_model}' failed "
-                    f"{consecutive_fail} attacks in a row — likely rate-limited or "
-                    f"unavailable. Try another target model or add OpenRouter credits. "
-                    f"Last error: {snippet}"
+                    f"Scan aborted: '{target_model}' (or the judge) failed {consecutive_fail} "
+                    f"attacks in a row — likely sustained rate-limiting or an outage. Lower the "
+                    f"scan size, raise ABORT_AFTER_CONSECUTIVE, or try another model. Last error: {snippet}"
                 )
+            # adaptive backoff: let transient rate-limits clear before the next prompt
+            await asyncio.sleep(min(2.0 * consecutive_fail, 30.0))
+            continue
         else:
             consecutive_fail = 0
 
-        # Rate limit buffer
+        # Rate-limit buffer between successful prompts
         await asyncio.sleep(0.5)
 
     return all_results
